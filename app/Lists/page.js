@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Plus, Eye, ShoppingCart, Sparkles, Trash2, ArrowLeft, Check } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 // Add this CSS to your global styles or include it in your project
 const CSS_VARIABLES = `
@@ -83,24 +85,35 @@ const Input = ({ className = "", type = "text", ...props }) => (
 );
 
 // Header Component
-function Header({ searchQuery, onSearchChange, onCreateList }) {
+function Header({ searchQuery, onSearchChange, onCreateList, showSearchResults, searchResults, onSelectList }) {
   return (
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
 
-          {/* Search Bar */}
-          <div className="flex-1 max-w-md mx-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Search Bar + Dropdown Container */}
+          <div className="flex-1 max-w-md mx-4 relative">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 type="text"
                 placeholder="Search your grocery lists..."
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="pl-10 rounded-full border-border bg-background"
+                autoComplete="off"
               />
             </div>
+            {/* Search Results Dropdown - now directly below search bar */}
+            {showSearchResults && (
+              <div className="absolute left-0 right-0 mt-2 w-full z-50">
+                <SearchResults
+                  query={searchQuery}
+                  results={searchResults}
+                  onSelectList={onSelectList}
+                />
+              </div>
+            )}
           </div>
 
           {/* Create List Button */}
@@ -122,7 +135,7 @@ function SearchResults({ query, results, onSelectList }) {
   if (!query) return null;
 
   return (
-    <div className="absolute top-full left-0 right-0 mt-2 bg-background border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+    <div className="bg-white border border-border rounded-lg shadow-xl transition-all duration-200 z-50 max-h-96 overflow-y-auto w-full animate-fadeIn">
       {results.length > 0 ? (
         <div className="p-2">
           <div className="text-sm text-muted-foreground p-2 border-b">
@@ -166,7 +179,8 @@ function SearchResults({ query, results, onSelectList }) {
 }
 
 // ListCard Component
-function ListCard({ list, onView }) {
+function ListCard({ list }) {
+  const router = useRouter();
   const previewItems = list.items.slice(0, 3);
   const hasMoreItems = list.items.length > 3;
 
@@ -214,7 +228,7 @@ function ListCard({ list, onView }) {
         <Button
           onClick={(e) => {
             e.stopPropagation();
-            onView(list);
+            router.push(`/Lists/${list.id}`);
           }}
           variant="outline"
           size="sm"
@@ -229,22 +243,23 @@ function ListCard({ list, onView }) {
 }
 
 // ListEditor Component
-function ListEditor({ list, onUpdate, onBack }) {
+function ListEditor({ list, onUpdate, onBack, isCreatingNew }) {
   const [title, setTitle] = useState(list.title);
   const [newItemText, setNewItemText] = useState("");
-  const [isEditingTitle, setIsEditingTitle] = useState(!list.title);
   const titleInputRef = useRef(null);
   const newItemInputRef = useRef(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [localItems, setLocalItems] = useState(list.items);
 
   useEffect(() => {
-    if (isEditingTitle && titleInputRef.current) {
+    if (titleInputRef.current) {
       titleInputRef.current.focus();
     }
-  }, [isEditingTitle]);
+  }, []);
 
-  const handleTitleSave = () => {
-    setIsEditingTitle(false);
-    onUpdate({ ...list, title: title.trim() || "Untitled List" });
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    setIsDirty(true);
   };
 
   const handleAddItem = () => {
@@ -254,29 +269,62 @@ function ListEditor({ list, onUpdate, onBack }) {
         text: newItemText.trim(),
         completed: false,
       };
-      onUpdate({
-        ...list,
-        items: [...list.items, newItem],
-      });
-      setNewItemText("");
-      newItemInputRef.current?.focus();
+      if (isCreatingNew) {
+        setLocalItems(prev => [...prev, newItem]);
+        setIsDirty(true);
+        setNewItemText("");
+        newItemInputRef.current?.focus();
+      } else {
+        onUpdate({
+          ...list,
+          items: [...list.items, newItem],
+        });
+        setNewItemText("");
+        newItemInputRef.current?.focus();
+        setIsDirty(true);
+      }
     }
   };
 
   const handleDeleteItem = (itemId) => {
-    onUpdate({
-      ...list,
-      items: list.items.filter(item => item.id !== itemId),
-    });
+    if (isCreatingNew) {
+      setLocalItems(prev => prev.filter(item => item.id !== itemId));
+      setIsDirty(true);
+    } else {
+      onUpdate({
+        ...list,
+        items: list.items.filter(item => item.id !== itemId),
+      });
+      setIsDirty(true);
+    }
   };
 
   const handleToggleItem = (itemId) => {
-    onUpdate({
-      ...list,
-      items: list.items.map(item =>
-        item.id === itemId ? { ...item, completed: !item.completed } : item
-      ),
-    });
+    if (isCreatingNew) {
+      setLocalItems(prev =>
+        prev.map(item =>
+          item.id === itemId ? { ...item, completed: !item.completed } : item
+        )
+      );
+      setIsDirty(true);
+    } else {
+      onUpdate({
+        ...list,
+        items: list.items.map(item =>
+          item.id === itemId ? { ...item, completed: !item.completed } : item
+        ),
+      });
+      setIsDirty(true);
+    }
+  };
+
+  const handleSave = () => {
+    if (isCreatingNew) {
+      onUpdate({ ...list, title: title.trim() || "Untitled List", items: localItems });
+    } else {
+      onUpdate({ ...list, title: title.trim() || "Untitled List" });
+    }
+    setIsDirty(false);
   };
 
   return (
@@ -294,30 +342,23 @@ function ListEditor({ list, onUpdate, onBack }) {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            
-            {isEditingTitle ? (
-              <div className="flex-1 flex gap-2">
-                <Input
-                  ref={titleInputRef}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter list title..."
-                  onKeyDown={(e) => e.key === "Enter" && handleTitleSave()}
-                  onBlur={handleTitleSave}
-                  className="text-2xl font-bold border-0 bg-transparent p-0 focus-visible:ring-0"
-                />
-                <Button size="sm" onClick={handleTitleSave}>
-                  <Check className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <h1
-                className="text-2xl font-bold text-grocery-text cursor-pointer hover:text-primary transition-colors"
-                onClick={() => setIsEditingTitle(true)}
-              >
-                {title || "Untitled List"}
-              </h1>
-            )}
+            {/* Editable Heading Input */}
+            <Input
+              ref={titleInputRef}
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="Enter list title..."
+              className="text-2xl font-bold border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
+              style={{ maxWidth: 400 }}
+            />
+            {/* Save Button */}
+            <Button
+              onClick={handleSave}
+              disabled={!isDirty}
+              className="ml-auto bg-primary text-primary-foreground hover:bg-primary/90 px-6 font-medium rounded-full transition-all duration-200 disabled:opacity-50"
+            >
+              Save
+            </Button>
           </div>
         </div>
       </div>
@@ -348,8 +389,8 @@ function ListEditor({ list, onUpdate, onBack }) {
 
           {/* Items List */}
           <div className="space-y-3">
-            {list.items.length > 0 ? (
-              list.items.map((item) => (
+            {(isCreatingNew ? localItems : list.items).length > 0 ? (
+              (isCreatingNew ? localItems : list.items).map((item) => (
                 <Card
                   key={item.id}
                   className="p-4 bg-grocery-card border border-border hover:shadow-card transition-all duration-200"
@@ -468,16 +509,75 @@ export default function Lists() {
   const [currentView, setCurrentView] = useState("home");
   const [currentList, setCurrentList] = useState(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  // Initialize with sample data
+  // Load lists from localStorage or use sample data, merging sample lists if missing
   useEffect(() => {
-    setLists(createSampleLists());
+    const stored = localStorage.getItem("groceryLists");
+    const sampleLists = createSampleLists();
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored).map(list => ({
+          ...list,
+          createdAt: new Date(list.createdAt),
+        }));
+        // Merge in sample lists that are missing (by id)
+        const allIds = new Set(parsed.map(l => l.id));
+        const merged = [
+          ...parsed,
+          ...sampleLists.filter(sample => !allIds.has(sample.id)),
+        ];
+        setLists(merged);
+        // Save merged result to localStorage
+        localStorage.setItem("groceryLists", JSON.stringify(merged));
+      } catch {
+        setLists(sampleLists);
+        localStorage.setItem("groceryLists", JSON.stringify(sampleLists));
+      }
+    } else {
+      setLists(sampleLists);
+      localStorage.setItem("groceryLists", JSON.stringify(sampleLists));
+    }
   }, []);
 
-  // Get recent lists (5 most recent)
-  const recentLists = lists
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 5);
+  // Save lists to localStorage whenever they change
+  useEffect(() => {
+    if (lists.length > 0) {
+      localStorage.setItem(
+        "groceryLists",
+        JSON.stringify(lists)
+      );
+    }
+  }, [lists]);
+
+  // If /Lists/[id] is accessed, show that list in editor mode
+  useEffect(() => {
+    if (router && router.id && lists.length > 0) {
+      const found = lists.find(l => l.id === router.id);
+      if (found) {
+        setCurrentList(found);
+        setCurrentView("editor");
+      }
+    }
+  }, [router, lists]);
+
+  // On mount, check for ?view=<id> param and open that list if present
+  useEffect(() => {
+    const viewId = searchParams.get("view");
+    if (viewId && lists.length > 0) {
+      const found = lists.find(l => l.id === viewId);
+      if (found) {
+        setCurrentList(found);
+        setCurrentView("editor");
+      }
+    }
+  }, [searchParams, lists]);
+
+  // Get all lists, sorted by most recent
+  const allLists = lists
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   // Filter lists based on search query
   const searchResults = lists.filter(list =>
@@ -491,9 +591,9 @@ export default function Lists() {
       items: [],
       createdAt: new Date(),
     };
-    setLists(prev => [newList, ...prev]);
     setCurrentList(newList);
     setCurrentView("editor");
+    setIsCreatingNew(true);
     setSearchQuery("");
     setShowSearchResults(false);
   };
@@ -506,15 +606,26 @@ export default function Lists() {
   };
 
   const handleUpdateList = (updatedList) => {
-    setLists(prev =>
-      prev.map(list => (list.id === updatedList.id ? updatedList : list))
-    );
+    if (isCreatingNew) {
+      setLists(prev => [updatedList, ...prev]);
+      setIsCreatingNew(false);
+    } else {
+      setLists(prev =>
+        prev.map(list => (list.id === updatedList.id ? updatedList : list))
+      );
+    }
     setCurrentList(updatedList);
   };
 
   const handleBackToHome = () => {
-    setCurrentView("home");
-    setCurrentList(null);
+    if (window.history.length > 2) {
+      router.back();
+    } else {
+      setCurrentView("home");
+      setCurrentList(null);
+      setIsCreatingNew(false);
+      router.push('/Lists');
+    }
   };
 
   const handleSearchChange = (query) => {
@@ -523,7 +634,9 @@ export default function Lists() {
   };
 
   const handleSearchResultSelect = (list) => {
-    handleViewList(list);
+    setShowSearchResults(false);
+    setSearchQuery("");
+    router.push(`/Lists/${list.id}`);
   };
 
   // Render current view
@@ -533,6 +646,7 @@ export default function Lists() {
         list={currentList}
         onUpdate={handleUpdateList}
         onBack={handleBackToHome}
+        isCreatingNew={isCreatingNew}
       />
     );
   }
@@ -543,28 +657,14 @@ export default function Lists() {
       <style>{CSS_VARIABLES}</style>
       
       {/* Header with Search */}
-      <div className="relative">
-        <Header
-          searchQuery={searchQuery}
-          onSearchChange={handleSearchChange}
-          onCreateList={handleCreateList}
-        />
-        
-        {/* Search Results Dropdown */}
-        {showSearchResults && (
-          <div className="absolute inset-x-0 top-full z-50">
-            <div className="container mx-auto px-4">
-              <div className="max-w-md mx-auto relative">
-                <SearchResults
-                  query={searchQuery}
-                  results={searchResults}
-                  onSelectList={handleSearchResultSelect}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      <Header
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
+        onCreateList={handleCreateList}
+        showSearchResults={showSearchResults}
+        searchResults={searchResults}
+        onSelectList={handleSearchResultSelect}
+      />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
@@ -580,13 +680,12 @@ export default function Lists() {
           </div>
 
           {/* Recent Lists Grid */}
-          {recentLists.length > 0 ? (
+          {allLists.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {recentLists.map((list) => (
+              {allLists.map((list) => (
                 <ListCard
                   key={list.id}
                   list={list}
-                  onView={handleViewList}
                 />
               ))}
             </div>
