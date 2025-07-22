@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { Search, Plus, Eye, ShoppingCart, Sparkles, Trash2, ArrowLeft, Check } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
@@ -502,8 +502,7 @@ const createSampleLists = () => [
   },
 ];
 
-// Main GroceryListApp Component
-export default function Lists() {
+function ListsComponent() {
   const [lists, setLists] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentView, setCurrentView] = useState("home");
@@ -715,5 +714,13 @@ export default function Lists() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function Lists() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ListsComponent />
+    </Suspense>
   );
 }
