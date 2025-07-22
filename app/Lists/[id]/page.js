@@ -81,12 +81,13 @@ function createSampleLists() {
   ];
 }
 
-function ListEditor({ list, onBack }) {
+function ListEditor({ list, onUpdate, onBack }) {
   const [title, setTitle] = useState(list.title);
   const [items, setItems] = useState(list.items);
   const [newItemText, setNewItemText] = useState("");
   const titleInputRef = useRef(null);
   const newItemInputRef = useRef(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   const handleAddItem = () => {
     if (newItemText.trim()) {
@@ -98,11 +99,13 @@ function ListEditor({ list, onBack }) {
       setItems(prev => [...prev, newItem]);
       setNewItemText("");
       newItemInputRef.current?.focus();
+      setIsDirty(true);
     }
   };
 
   const handleDeleteItem = (itemId) => {
     setItems(prev => prev.filter(item => item.id !== itemId));
+    setIsDirty(true);
   };
 
   const handleToggleItem = (itemId) => {
@@ -111,6 +114,35 @@ function ListEditor({ list, onBack }) {
         item.id === itemId ? { ...item, completed: !item.completed } : item
       )
     );
+    setIsDirty(true);
+  };
+
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    setIsDirty(true);
+  };
+
+  const handleSave = () => {
+    const updatedList = { ...list, title: title.trim() || "Untitled List", items };
+    // Update localStorage
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("groceryLists") : null;
+    let allLists = [];
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored).map(l => ({
+          ...l,
+          createdAt: new Date(l.createdAt),
+        }));
+        allLists = parsed.map(l => l.id === updatedList.id ? updatedList : l);
+      } catch {
+        allLists = [updatedList];
+      }
+    } else {
+      allLists = [updatedList];
+    }
+    localStorage.setItem("groceryLists", JSON.stringify(allLists));
+    setIsDirty(false);
+    if (onUpdate) onUpdate(updatedList);
   };
 
   return (
@@ -129,11 +161,18 @@ function ListEditor({ list, onBack }) {
             <Input
               ref={titleInputRef}
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={handleTitleChange}
               placeholder="Enter list title..."
               className="text-2xl font-bold border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
               style={{ maxWidth: 400 }}
             />
+            <button
+              onClick={handleSave}
+              disabled={!isDirty}
+              className="ml-auto bg-primary text-primary-foreground hover:bg-primary/90 px-6 font-medium rounded-full transition-all duration-200 disabled:opacity-50"
+            >
+              Save
+            </button>
           </div>
         </div>
       </div>
@@ -256,5 +295,5 @@ export default function ListPage() {
     );
   }
 
-  return <ListEditor list={list} onBack={() => router.push('/Lists')} />;
+  return <ListEditor list={list} onUpdate={setList} onBack={() => router.push('/Lists')} />;
 } 

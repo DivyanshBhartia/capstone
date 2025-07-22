@@ -30,7 +30,6 @@ export default function RootLayout({ children }) {
               <div className="flex gap-10 ">
               <Link href='/'   className="hover:text-cyan-800">Home</Link>
               <Link href='/Lists'  className="hover:text-cyan-800">Lists</Link>
-              <Link href='/About' className="hover:text-cyan-800">About</Link>
               <Link href = '/ContactUs' className="hover:text-cyan-800">Contact Us</Link>
               </div>
               <div className=" text-lg">|</div>

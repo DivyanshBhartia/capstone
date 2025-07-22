@@ -166,7 +166,7 @@ function Landing() {
                   ref={inputRef}
                   type="text"
                   className="h-12 w-[70%]  rounded-l-[3px] rounded-r-none bg-white pl-12 text-lg "
-                  placeholder="Enter Item..."
+                  placeholder="Enter list name..."
                   value={searchQuery}
                   onChange={handleSearchChange}
                   onFocus={() => setShowSearchResults(searchQuery.trim().length > 0)}
